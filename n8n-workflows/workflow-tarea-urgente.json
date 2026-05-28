@@ -1,0 +1,182 @@
+{
+  "name": "Workflow 1 - Tarea urgente con consejo de IA",
+  "nodes": [
+    {
+      "id": "webhook-entry",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "path": "evento-tarea",
+        "method": "POST",
+        "options": {}
+      }
+    },
+    {
+      "id": "if-prioridad",
+      "name": "IF Prioridad Alta",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.tarea.prioridad }}",
+              "operation": "equal",
+              "value2": "alta"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "http-consejo",
+      "name": "HTTP Request - Consejo IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 200],
+      "parameters": {
+        "url": "http://localhost:8000/api/chat",
+        "method": "POST",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "Da un consejo breve para gestionar esta tarea urgente: '{{ $json.tarea.titulo }}'"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "set-urgente-true",
+      "name": "Set urgente = true",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [850, 200],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "urgente",
+              "value": "true"
+            },
+            {
+              "name": "consejo",
+              "value": "={{ $json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "set-urgente-false",
+      "name": "Set urgente = false",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [850, 400],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "urgente",
+              "value": "false"
+            },
+            {
+              "name": "consejo",
+              "value": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "merge-branches",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition"
+      }
+    },
+    {
+      "id": "set-timestamp",
+      "name": "Set Timestamp",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [1250, 300],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, urgente: $json.urgente, consejo: $json.consejo, timestamp: $json.timestamp } }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "IF Prioridad Alta", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Prioridad Alta": {
+      "main": [
+        [{ "node": "HTTP Request - Consejo IA", "type": "main", "index": 0 }],
+        [{ "node": "Set urgente = false", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP Request - Consejo IA": {
+      "main": [
+        [{ "node": "Set urgente = true", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set urgente = true": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set urgente = false": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 1 }]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [{ "node": "Set Timestamp", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set Timestamp": {
+      "main": [
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": []
+}

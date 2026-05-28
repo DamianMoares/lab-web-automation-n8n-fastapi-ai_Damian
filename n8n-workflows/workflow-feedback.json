@@ -1,0 +1,205 @@
+{
+  "name": "Workflow 2 - Feedback → análisis → ticket",
+  "nodes": [
+    {
+      "id": "webhook-feedback",
+      "name": "Webhook Feedback",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "path": "feedback",
+        "method": "POST",
+        "options": {}
+      }
+    },
+    {
+      "id": "http-get-usuario",
+      "name": "HTTP GET Usuario",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300],
+      "parameters": {
+        "url": "http://localhost:8000/usuarios/{{ $json.usuario_id }}",
+        "method": "GET",
+        "authentication": "none",
+        "sendBody": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "http-analizar-feedback",
+      "name": "HTTP Analizar Feedback con IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "parameters": {
+        "url": "http://localhost:8000/api/chat",
+        "method": "POST",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "Analiza este feedback de {{ $json.nombre }} (plan: {{ $json.plan }}): '{{ $('Webhook Feedback').item.json.mensaje }}' — Calificación: {{ $('Webhook Feedback').item.json.calificacion }}/5. Devuelve JSON: { sentimiento, problema_principal, accion }"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "if-calificacion",
+      "name": "IF Calificación < 3",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $('Webhook Feedback').item.json.calificacion }}",
+              "operation": "smaller",
+              "value2": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "http-crear-ticket",
+      "name": "HTTP POST Crear Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1050, 200],
+      "parameters": {
+        "url": "http://localhost:8000/tareas",
+        "method": "POST",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "titulo",
+              "value": "Ticket feedback: {{ $json.problema_principal }}"
+            },
+            {
+              "name": "prioridad",
+              "value": "alta"
+            },
+            {
+              "name": "descripcion",
+              "value": "Usuario: {{ $('HTTP GET Usuario').item.json.nombre }} | Cal: {{ $('Webhook Feedback').item.json.calificacion }}/5"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "merge-feedback",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1250, 300],
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition"
+      }
+    },
+    {
+      "id": "respond-feedback",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, sentimiento: $json.sentimiento, ticket_creado: $json.ticket_creado } }}"
+      }
+    },
+    {
+      "id": "set-ticket-creado-true",
+      "name": "Set ticket_creado = true",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [1250, 200],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "ticket_creado",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "set-ticket-creado-false",
+      "name": "Set ticket_creado = false",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [1050, 400],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "ticket_creado",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Feedback": {
+      "main": [
+        [{ "node": "HTTP GET Usuario", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP GET Usuario": {
+      "main": [
+        [{ "node": "HTTP Analizar Feedback con IA", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP Analizar Feedback con IA": {
+      "main": [
+        [{ "node": "IF Calificación < 3", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Calificación < 3": {
+      "main": [
+        [{ "node": "HTTP POST Crear Ticket", "type": "main", "index": 0 }],
+        [{ "node": "Set ticket_creado = false", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP POST Crear Ticket": {
+      "main": [
+        [{ "node": "Set ticket_creado = true", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set ticket_creado = true": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set ticket_creado = false": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 1 }]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": []
+}

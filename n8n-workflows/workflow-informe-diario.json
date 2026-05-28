@@ -1,0 +1,113 @@
+{
+  "name": "Workflow 3 - Informe diario programado",
+  "nodes": [
+    {
+      "id": "schedule-trigger",
+      "name": "Schedule Diario 9:00",
+      "type": "n8n-nodes-base.triggerSchedule",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "http-get-tareas",
+      "name": "HTTP GET Tareas Pendientes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300],
+      "parameters": {
+        "url": "http://localhost:8000/tareas",
+        "method": "GET",
+        "authentication": "none",
+        "sendBody": false,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "completada",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-agrupar",
+      "name": "Code - Agrupar por prioridad",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "parameters": {
+        "language": "javascript",
+        "code": "const tareas = $input.all().map(i => i.json);\nconst porPrioridad = tareas.reduce((acc, t) => {\n  acc[t.prioridad] = (acc[t.prioridad] || 0) + 1;\n  return acc;\n}, {});\nreturn [{ json: { total: tareas.length, porPrioridad, tareas } }];"
+      }
+    },
+    {
+      "id": "http-informe-ia",
+      "name": "HTTP POST Generar Informe IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 300],
+      "parameters": {
+        "url": "http://localhost:8000/api/chat",
+        "method": "POST",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "Genera un informe diario ejecutivo en 3 párrafos. Tareas pendientes: {{ $json.total }}. Por prioridad: {{ JSON.stringify($json.porPrioridad) }}. Incluye una recomendación de acción."
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-guardar",
+      "name": "Code - Guardar en archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "parameters": {
+        "language": "javascript",
+        "code": "const fs = require('fs');\nconst entrada = {\n  fecha: new Date().toISOString(),\n  informe: $json.informe,\n  stats: $json.stats\n};\nfs.appendFileSync('informes.jsonl', JSON.stringify(entrada) + '\\n');\nreturn [{ json: { guardado: true } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Diario 9:00": {
+      "main": [
+        [{ "node": "HTTP GET Tareas Pendientes", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP GET Tareas Pendientes": {
+      "main": [
+        [{ "node": "Code - Agrupar por prioridad", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code - Agrupar por prioridad": {
+      "main": [
+        [{ "node": "HTTP POST Generar Informe IA", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP POST Generar Informe IA": {
+      "main": [
+        [{ "node": "Code - Guardar en archivo", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": []
+}
